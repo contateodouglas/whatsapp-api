@@ -1,20 +1,18 @@
 import { rmSync, readdir } from 'fs'
 import { join } from 'path'
 import pino from 'pino'
-import baileys from '@adiwajshing/baileys'
 import { toDataURL } from 'qrcode'
 import __dirname from './dirname.js'
 import response from './response.js'
 import axios from 'axios'
 
-const {
-    default: makeWASocket,
-    useMultiFileAuthState,
-    makeInMemoryStore,
-    Browsers,
-    DisconnectReason,
-    delay
-} = baileys
+import makeWASocket, {
+  useMultiFileAuthState,
+  makeInMemoryStore,
+  Browsers,
+  DisconnectReason,
+  delay
+} from '@adiwajshing/baileys'
 
 const sessions = new Map()
 const retries = new Map()
