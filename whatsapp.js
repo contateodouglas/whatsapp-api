@@ -28,7 +28,8 @@ app.post('/chats/send', async (req, res) => {
   console.log('⏳ /chats/send payload:', JSON.stringify(req.body, null, 2));
 
   const { receiver, message, delay: delayMs = 0 } = req.body;
-  const sessionEntry = sessions.get(`device_${req.body.device}`);
+const sessionEntry = sessions.get(`device_${req.body.device}`);
+
   if (!sessionEntry) {
     return res.status(404).json({ message: 'Session not found' });
   }
@@ -51,10 +52,7 @@ app.post('/chats/send', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server listening on port ${PORT}`);
-});
+
 
 const sessionsDir = (sessionId = '') => join(__dirname, 'sessions', sessionId);
 
@@ -66,14 +64,14 @@ const shouldReconnect = (sessionId) => {
 
   if (attempts < maxRetries) {
     retries.set(sessionId, attempts + 1);
-    console.log(`🔄 Reconnecting... Attempt ${attempts + 1} for session ${sessionId}`);
+  console.log(`🔄 Reconnecting... Attempt ${attempts + 1} for session ${sessionId}`);
     return true;
   }
   return false;
 };
 
 const createSession = async (sessionId, isLegacy = false, res = null) => {
-  const sessionFile = `${isLegacy ? 'legacy_' : 'md_'}${sessionId}`;
+const sessionFile = `${isLegacy ? 'legacy_' : 'md_'}${sessionId}`;
   const logger = pino({ level: 'silent' });
   const store = createStore(sessionId);
 
@@ -167,7 +165,7 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
 
 const deleteSession = (sessionId) => {
   const sessionFile = `md_${sessionId}`;
-  const storeFile = `${sessionId}_store.json`;
+const storeFile = `${sessionId}_store.json`;
   const options = { force: true, recursive: true };
 
   try {
@@ -215,13 +213,14 @@ const sendMessage = async (session, receiver, message, delayMs = 1000) => {
 const formatPhone = (phone) => {
   const formatted = phone.replace(/\D/g, '');
   return formatted.endsWith('@s.whatsapp.net')
-    ? formatted
-    : `${formatted}@s.whatsapp.net`;
+  ? formatted
+  : `${formatted}@s.whatsapp.net`;
+
 };
 
 const formatGroup = (group) => {
   const formatted = group.replace(/[^\d-]/g, '');
-  return formatted.endsWith('@g.us') ? formatted : `${formatted}@g.us`;
+return formatted.endsWith('@g.us') ? formatted : `${formatted}@g.us`;
 };
 
 const cleanup = () => {
