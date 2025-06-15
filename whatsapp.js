@@ -27,6 +27,37 @@ const retries = new Map();
 const app = express();
 app.use(express.json());
 
+app.post('/chats/send', async (req, res) => {
+  console.log('⏳ /chats/send payload:', JSON.stringify(req.body, null, 2));
+
+  // --- INÍCIO da LÓGICA de envio ---
+  const { receiver, message, delay = 0 } = req.body;
+  const sessionEntry = sessions.get(`device_${req.body.device}`);
+  if (!sessionEntry) {
+    return res.status(404).json({ message: 'Session not found' });
+  }
+
+  try {
+    if (delay) await new Promise(r => setTimeout(r, delay));
+    const interactive = Boolean(message.buttonsMessage || message.listMessage);
+    const payload     = interactive
+      ? { viewOnceMessage: { message } }
+      : message;
+
+    const result = await sessionEntry.sock.sendMessage(receiver, payload);
+    return res.json({ success: true, data: result });
+  } catch (e) {
+    console.error('🔥 Handler /chats/send failed:', e);
+    return res.status(500).json({ message: 'Failed to send the message.' });
+  }
+  // --- FIM da LÓGICA de envio ---
+});  // <-- Fecha aqui o app.post  
+
+const PORT = process.env.PORT || 8000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server listening on port ${PORT}`);
+});
+
 // 📂 Diretório de sessões
 const sessionsDir = (sessionId = '') => join(__dirname, 'sessions', sessionId);
 
@@ -87,7 +118,7 @@ const store  = createStore(sessionId);
     });
 
 
-    sessions.set(sessionId, { ...sock, store, isLegacy });
+    sessions.set(sessionId, { sock, store, isLegacy });
 
     sock.ev.on('creds.update', saveCreds);
 
