@@ -53,10 +53,7 @@ app.post('/chats/send', async (req, res) => {
   // --- FIM da LÓGICA de envio ---
 });  // <-- Fecha aqui o app.post  
 
-const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server listening on port ${PORT}`);
-});
+
 
 // 📂 Diretório de sessões
 const sessionsDir = (sessionId = '') => join(__dirname, 'sessions', sessionId);
