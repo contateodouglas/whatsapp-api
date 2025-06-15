@@ -1,354 +1,248 @@
-import { rmSync, readdir } from 'fs'
-import { join } from 'path'
-import pino from 'pino'
-import { toDataURL } from 'qrcode'
-import __dirname from './dirname.js'
-import response from './response.js'
-import axios from 'axios'
+import { rmSync, readdirSync } from 'fs';
+import { join } from 'path';
+import pino from 'pino';
+import { toDataURL } from 'qrcode';
+import __dirname from './dirname.js';
+import response from './response.js';
+import axios from 'axios';
+import express from 'express';
 
-import makeWASocket, {
+import baileys from '@whiskeysockets/baileys';
+
+const {
+  default: makeWASocket,
   useMultiFileAuthState,
   makeInMemoryStore,
   Browsers,
   DisconnectReason,
   delay
-} from '@adiwajshing/baileys'
-
-const sessions = new Map()
-const retries = new Map()
-
-import express from 'express'
-const app = express()
-app.use(express.json())
-
-// Envia mensagem simples, botões ou lista
-app.post('/chats/send', async (req, res) => {
-  const session = sessions.get(req.query.id)
-  if (!session) return res.status(404).json({ message: 'Session not found' })
-
-  const { receiver, message, delay = 0 } = req.body
-  try {
-    if (delay) await new Promise(r => setTimeout(r, delay))
-    const interactive = Boolean(message.buttonsMessage || message.listMessage)
-    const payload = interactive
-      ? { viewOnceMessage: { message } }
-      : message
-
-    const result = await session.sendMessage(receiver, payload)
-    return res.json({ success: true, data: result })
-  } catch (e) {
-    console.error('Error on /chats/send:', e)
-    return res.status(500).json({ message: 'Failed to send the message.' })
-  }
-})
+} = baileys;
 
 
-const sessionsDir = (sessionId = '') => {
-    return join(__dirname, 'sessions', sessionId ? sessionId : '')
-}
+const sessions = new Map();
+const retries = new Map();
 
+const app = express();
+app.use(express.json());
 
-const isSessionExists = (sessionId) => {
-    return sessions.has(sessionId)
-}
+// 📂 Diretório de sessões
+const sessionsDir = (sessionId = '') => join(__dirname, 'sessions', sessionId);
 
+// 🔍 Verifica se sessão existe
+const isSessionExists = (sessionId) => sessions.has(sessionId);
+
+// 🔄 Deve reconectar?
 const shouldReconnect = (sessionId) => {
-    let maxRetries = parseInt(process.env.MAX_RETRIES ?? 0)
-    let attempts = retries.get(sessionId) ?? 0
-
-    maxRetries = maxRetries < 1 ? 1 : maxRetries
+    const maxRetries = parseInt(process.env.MAX_RETRIES ?? 3);
+    const attempts = retries.get(sessionId) ?? 0;
 
     if (attempts < maxRetries) {
-        ++attempts
-
-        console.log('Reconnecting...', { attempts, sessionId })
-        retries.set(sessionId, attempts)
-
-        return true
+        retries.set(sessionId, attempts + 1);
+        console.log(`Reconnecting... Attempt ${attempts + 1} for session ${sessionId}`);
+        return true;
     }
+    return false;
+};
 
-    return false
-}
-
+// 🚀 Cria uma nova sessão
 const createSession = async (sessionId, isLegacy = false, res = null) => {
-    const sessionFile = (isLegacy ? 'legacy_' : 'md_') + sessionId + (isLegacy ? '.json' : '')
+    const sessionFile = `${isLegacy ? 'legacy_' : 'md_'}${sessionId}`;
 
-    const logger = pino({ level: 'warn' })
-    const store = makeInMemoryStore({ logger })
+    const logger = pino({ level: 'warn' });
+    const store = makeInMemoryStore({ logger });
 
-    let state, saveState
+    const { state, saveCreds } = await useMultiFileAuthState(sessionsDir(sessionFile));
+    const { version } = await fetchLatestBaileysVersion();
 
-    if (isLegacy) {
-      
-    } else {
-        ;({ state, saveCreds: saveState } = await useMultiFileAuthState(sessionsDir(sessionFile)))
-    }
-
-    /**
-     * @type {import('@adiwajshing/baileys').CommonSocketConfig}
-     */
-    const waConfig = {
+    const sock = makeWASocket({
+        version,
         auth: state,
-        version: [2, 3000, 1023249347],
-        printQRInTerminal: false,
         logger,
         browser: Browsers.ubuntu('Chrome'),
+        printQRInTerminal: false,
         patchMessageBeforeSending: (message) => {
-                const requiresPatch = !!(
-                     message.buttonsMessage ||
-                     message.listMessage
-                );
-                if (requiresPatch) {
-                    message = {
-                        viewOnceMessage: {
-                            message: {
-                                messageContextInfo: {
-                                    deviceListMetadataVersion: 2,
-                                    deviceListMetadata: {},
-                                },
-                                ...message,
+            const requiresPatch = !!(
+                message.buttonsMessage ||
+                message.listMessage
+            );
+            if (requiresPatch) {
+                message = {
+                    viewOnceMessage: {
+                        message: {
+                            messageContextInfo: {
+                                deviceListMetadataVersion: 2,
+                                deviceListMetadata: {},
                             },
+                            ...message,
                         },
-                    };
-                }
-
-                return message;
-            },
-    }
-
-    /**
-     * @type {import('@adiwajshing/baileys').AnyWASocket}
-     */
-   const wa = makeWASocket(waConfig)
-
-
-    if (!isLegacy) {
-        store.readFromFile(sessionsDir(`${sessionId}_store.json`))
-        store.bind(wa.ev)
-    }
-
-    sessions.set(sessionId, { ...wa, store, isLegacy })
-
-    wa.ev.on('creds.update', saveState)
-
-    wa.ev.on('chats.set', ({ chats }) => {
-        if (isLegacy) {
-            store.chats.insertIfAbsent(...chats)
-        }
-    })
-
-    // Automatically read incoming messages, uncomment below codes to enable this behaviour
-    
-    wa.ev.on('messages.upsert', async (messages) => {
-         try{
-            const message = messages.messages[0];
-            
-            if (message.key.fromMe == false && messages.type == 'notify') {
-                const received_data=[];
-               
-                
-               
-                let parseId = message.key.remoteJid.split("@");
-                let splitId = parseId[1] ?? null;
-
-                let isGroup = splitId == 's.whatsapp.net' ? false : true;
-                
-
-                if (message != '' && isGroup == false) {
-                    received_data['remote_id'] = message.key.remoteJid;
-                    received_data['sessionId'] = sessionId;
-                    received_data['message_id'] = message.key.id;
-                    received_data['message'] = message.message;
-                  
-                    sentWebHook(sessionId, received_data);
-                }
-
+                    },
+                };
             }
-         }
-         catch{
-            
-         }
-       
-
-        
+            return message;
+        },
     });
 
-   
-    
+    store.readFromFile(sessionsDir(`${sessionId}_store.json`));
+    store.bind(sock.ev);
 
-    wa.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update
-        const statusCode = lastDisconnect?.error?.output?.statusCode
+    sessions.set(sessionId, { ...sock, store, isLegacy });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('messages.upsert', async (messages) => {
+        const msg = messages.messages[0];
+        if (!msg || msg.key.fromMe) return;
+
+        const isGroup = msg.key.remoteJid.endsWith('@g.us');
+        if (!isGroup) {
+            const receivedData = {
+                remote_id: msg.key.remoteJid,
+                sessionId,
+                message_id: msg.key.id,
+                message: msg.message
+            };
+            sentWebHook(sessionId, receivedData);
+        }
+    });
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
 
         if (connection === 'open') {
             retries.delete(sessionId);
-
+            console.log(`Session ${sessionId} connected`);
         }
 
         if (connection === 'close') {
             if (statusCode === DisconnectReason.loggedOut || !shouldReconnect(sessionId)) {
+                console.log(`Session ${sessionId} logged out or cannot reconnect`);
                 if (res && !res.headersSent) {
-                    response(res, 500, false, 'Unable to create session.')
+                    response(res, 500, false, 'Unable to create session.');
                 }
-
-                return deleteSession(sessionId, isLegacy)
+                return deleteSession(sessionId);
             }
-
-            setTimeout(
-                () => {
-                    createSession(sessionId, isLegacy, res)
-                },
-                statusCode === DisconnectReason.restartRequired ? 0 : parseInt(process.env.RECONNECT_INTERVAL ?? 0)
-            )
+            setTimeout(() => {
+                createSession(sessionId, isLegacy, res);
+            }, statusCode === DisconnectReason.restartRequired ? 0 : parseInt(process.env.RECONNECT_INTERVAL ?? 5000));
         }
 
-        if (update.qr) {
+        if (qr) {
             if (res && !res.headersSent) {
                 try {
-                    const qr = await toDataURL(update.qr)
-
-                    response(res, 200, true, 'QR code received, please scan the QR code.', { qr })
-
-                    return
-                } catch {
-                    response(res, 500, false, 'Unable to create QR code.')
+                    const qrCode = await toDataURL(qr);
+                    response(res, 200, true, 'QR code received, please scan it.', { qr: qrCode });
+                } catch (err) {
+                    response(res, 500, false, 'Failed to generate QR code.');
                 }
             }
-
-            try {
-                await wa.logout()
-            } catch {
-            } finally {
-                deleteSession(sessionId, isLegacy);
-                
-
-            }
         }
+    });
+};
+// 🗑️ Deleta sessão
+const deleteSession = (sessionId) => {
+    const sessionFile = `md_${sessionId}`;
+    const storeFile = `${sessionId}_store.json`;
+    const options = { force: true, recursive: true };
 
+    try {
+        rmSync(sessionsDir(sessionFile), options);
+        rmSync(sessionsDir(storeFile), options);
+    } catch (e) {
+        console.warn(`Error deleting session files for ${sessionId}`);
+    }
 
-    })
-}
+    sessions.delete(sessionId);
+    retries.delete(sessionId);
+};
 
-
-/**
- * @returns {(import('@adiwajshing/baileys').AnyWASocket|null)}
- */
-const getSession = (sessionId) => {
-    return sessions.get(sessionId) ?? null
-}
-
-
-
-const deleteSession = (sessionId, isLegacy = false) => {
-    const sessionFile = (isLegacy ? 'legacy_' : 'md_') + sessionId + (isLegacy ? '.json' : '')
-    const storeFile = `${sessionId}_store.json`
-    const rmOptions = { force: true, recursive: true }
-
-    rmSync(sessionsDir(sessionFile), rmOptions)
-    rmSync(sessionsDir(storeFile), rmOptions)
-
-    sessions.delete(sessionId)
-    retries.delete(sessionId)
-
-    setDeviceStatus(sessionId,0);
-}
-
+// 🗂️ Lista de chats
 const getChatList = (sessionId, isGroup = false) => {
-    const filter = isGroup ? '@g.us' : '@s.whatsapp.net'
+    const filter = isGroup ? '@g.us' : '@s.whatsapp.net';
+    const session = sessions.get(sessionId);
+    return session ? session.store.chats.filter(chat => chat.id.endsWith(filter)) : [];
+};
 
-    return getSession(sessionId).store.chats.filter((chat) => {
-        return chat.id.endsWith(filter)
-    })
-}
-
-/**
- * @param {import('@adiwajshing/baileys').AnyWASocket} session
- */
+// 🔍 Verifica se contato ou grupo existe
 const isExists = async (session, jid, isGroup = false) => {
     try {
-        let result
-
         if (isGroup) {
-            result = await session.groupMetadata(jid)
-
-            return Boolean(result.id)
+            const group = await session.groupMetadata(jid);
+            return Boolean(group.id);
         }
-
-        if (session.isLegacy) {
-            result = await session.onWhatsApp(jid)
-        } else {
-            ;[result] = await session.onWhatsApp(jid)
-        }
-
-        return result.exists
+        const [result] = await session.onWhatsApp(jid);
+        return result?.exists ?? false;
     } catch {
-        return false
+        return false;
     }
-}
+};
 
-/**
- * @param {import('@adiwajshing/baileys').AnyWASocket} session
- */
+// ✉️ Envia mensagem
 const sendMessage = async (session, receiver, message, delayMs = 1000) => {
     try {
-        await delay(parseInt(delayMs))
-        
-       
-        return session.sendMessage(receiver, message)
+        await delay(parseInt(delayMs));
+        return await session.sendMessage(receiver, message);
     } catch {
-        return Promise.reject(null) // eslint-disable-line prefer-promise-reject-errors
+        return Promise.reject(null);
     }
-}
+};
 
+// 🔢 Formata número de telefone
 const formatPhone = (phone) => {
-    if (phone.endsWith('@s.whatsapp.net')) {
-        return phone
-    }
+    const formatted = phone.replace(/\D/g, '');
+    return formatted.endsWith('@s.whatsapp.net') ? formatted : `${formatted}@s.whatsapp.net`;
+};
 
-    let formatted = phone.replace(/\D/g, '')
-
-    return (formatted += '@s.whatsapp.net')
-}
-
+// 🔢 Formata ID de grupo
 const formatGroup = (group) => {
-    if (group.endsWith('@g.us')) {
-        return group
-    }
+    const formatted = group.replace(/[^\d-]/g, '');
+    return formatted.endsWith('@g.us') ? formatted : `${formatted}@g.us`;
+};
 
-    let formatted = group.replace(/[^\d-]/g, '')
-
-    return (formatted += '@g.us')
-}
-
+// 🚿 Cleanup antes de encerrar
 const cleanup = () => {
-    console.log('Running cleanup before exit.')
-
+    console.log('Running cleanup before exit.');
     sessions.forEach((session, sessionId) => {
         if (!session.isLegacy) {
-            session.store.writeToFile(sessionsDir(`${sessionId}_store.json`))
+            session.store.writeToFile(sessionsDir(`${sessionId}_store.json`));
         }
-    })
-}
+    });
+};
 
+// 🚀 Inicializa sessões existentes
 const init = () => {
-    readdir(sessionsDir(), (err, files) => {
-        if (err) {
-            throw err
-        }
+    try {
+        const files = readdirSync(sessionsDir());
+        files.forEach(file => {
+            if (!file.startsWith('md_') && !file.startsWith('legacy_')) return;
+            const filename = file.replace('.json', '');
+            const isLegacy = filename.startsWith('legacy_');
+            const sessionId = filename.replace(isLegacy ? 'legacy_' : 'md_', '');
+            createSession(sessionId, isLegacy);
+        });
+    } catch (e) {
+        console.warn('No existing sessions found.');
+    }
+};
 
-        for (const file of files) {
-            if ((!file.startsWith('md_') && !file.startsWith('legacy_')) || file.endsWith('_store')) {
-                continue
-            }
+// 🛜 Exemplo de webhook
+const sentWebHook = async (sessionId, payload) => {
+    const webhookUrl = process.env.WEBHOOK_URL;
+    if (!webhookUrl) return;
+    try {
+        await axios.post(webhookUrl, {
+            sessionId,
+            ...payload
+        });
+    } catch (err) {
+        console.error('Error sending webhook:', err.message);
+    }
+};
 
-            const filename = file.replace('.json', '')
-            const isLegacy = filename.split('_', 1)[0] !== 'md'
-            const sessionId = filename.substring(isLegacy ? 7 : 3)
-
-            createSession(sessionId, isLegacy)
-        }
-    })
-}
+// 🚀 Exports
+const getSession = (sessionId) => {
+    return sessions.get(sessionId) || null;
+};
 
 export {
     isSessionExists,
@@ -361,5 +255,5 @@ export {
     formatPhone,
     formatGroup,
     cleanup,
-    init,
-}
+    init
+};
