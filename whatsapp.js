@@ -4,19 +4,19 @@ import pino from 'pino';
 import { toDataURL } from 'qrcode';
 import __dirname from './dirname.js';
 import response from './response.js';
+import { makeInMemoryStore } from './store.js';
 import axios from 'axios';
 import express from 'express';
 
-import baileys from '@whiskeysockets/baileys';
+import {
+    default as makeWASocket,
+    useMultiFileAuthState,
+    Browsers,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+    delay
+} from '@whiskeysockets/baileys';
 
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  makeInMemoryStore,
-  Browsers,
-  DisconnectReason,
-  delay
-} = baileys;
 
 
 const sessions = new Map();
