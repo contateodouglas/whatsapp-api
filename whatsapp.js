@@ -1,4 +1,5 @@
 import baileys from '@whiskeysockets/baileys';
+import { createStore } from './store.js';
 import { rmSync, readdirSync } from 'fs';
 import { join } from 'path';
 import pino from 'pino';
@@ -8,15 +9,13 @@ import response from './response.js';
 import axios from 'axios';
 import express from 'express';
 
-// Desestruturar corretamente
 const {
-    makeInMemoryStore,
-    useMultiFileAuthState,
-    Browsers,
-    DisconnectReason,
-    fetchLatestBaileysVersion,
-    delay,
-    proto,
+  default: makeWASocket,
+  useMultiFileAuthState,
+  Browsers,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  delay
 } = baileys;
 
 
@@ -51,8 +50,9 @@ const shouldReconnect = (sessionId) => {
 const createSession = async (sessionId, isLegacy = false, res = null) => {
     const sessionFile = `${isLegacy ? 'legacy_' : 'md_'}${sessionId}`;
 
-    const logger = pino({ level: 'warn' });
-    const store = makeInMemoryStore({ logger });
+const logger = pino({ level: 'warn' });
+const store  = createStore(sessionId);
+
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionsDir(sessionFile));
     const { version } = await fetchLatestBaileysVersion();
@@ -85,8 +85,6 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
         },
     });
 
-    store.readFromFile(sessionsDir(`${sessionId}_store.json`));
-    store.bind(sock.ev);
 
     sessions.set(sessionId, { ...sock, store, isLegacy });
 
