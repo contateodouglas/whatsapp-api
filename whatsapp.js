@@ -50,7 +50,8 @@ const shouldReconnect = (sessionId) => {
 const createSession = async (sessionId, isLegacy = false, res = null) => {
     const sessionFile = `${isLegacy ? 'legacy_' : 'md_'}${sessionId}`;
 
-const logger = pino({ level: 'warn' });
+const logger = pino({ level: 'silent' });
+
 const store  = createStore(sessionId);
 
 
