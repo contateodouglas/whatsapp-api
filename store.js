@@ -4,12 +4,9 @@ import pino from 'pino';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 
-const {
-    makeInMemoryStore,
-    makeCacheableSignalKeyStore,
-    useMultiFileAuthState,
-    proto,
-} = baileys;
+const { makeInMemoryStore, makeCacheableSignalKeyStore, proto } = baileys;
+export { makeInMemoryStore, makeCacheableSignalKeyStore, proto };
+
 
 // 📦 Cria um diretório, se não existir
 export const createFolderIfNotExists = (folderPath) => {

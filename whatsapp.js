@@ -1,21 +1,24 @@
+import baileys from '@whiskeysockets/baileys';
 import { rmSync, readdirSync } from 'fs';
 import { join } from 'path';
 import pino from 'pino';
 import { toDataURL } from 'qrcode';
 import __dirname from './dirname.js';
 import response from './response.js';
-import { makeInMemoryStore } from './store.js';
 import axios from 'axios';
 import express from 'express';
 
-import {
-    default as makeWASocket,
+// Desestruturar corretamente
+const {
+    makeInMemoryStore,
     useMultiFileAuthState,
     Browsers,
     DisconnectReason,
     fetchLatestBaileysVersion,
-    delay
-} from '@whiskeysockets/baileys';
+    delay,
+    proto,
+} = baileys;
+
 
 
 
