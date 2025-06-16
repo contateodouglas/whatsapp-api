@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { body, query } from 'express-validator'
-import controller from '../controllers/chatsController.js'
+import * as controller from '../controllers/chatsController.js'  // Importação corrigida
 import requestValidator from '../middlewares/requestValidator.js'
 import sessionValidator from '../middlewares/sessionValidator.js'
 

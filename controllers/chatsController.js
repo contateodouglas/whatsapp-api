@@ -7,7 +7,6 @@ import fs from 'fs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// Função para baixar arquivos temporários
 async function downloadFile(fileUrl, outputLocationPath) {
     const writer = fs.createWriteStream(outputLocationPath)
     const response = await axios({
@@ -22,67 +21,53 @@ async function downloadFile(fileUrl, outputLocationPath) {
     })
 }
 
-// Enviar mensagem de texto
 export const sendMessage = async (req, res) => {
-    const { sessionId } = req.params
-    const { to, message } = req.body
+    const { id: sessionId } = req.query
+    const { receiver, message } = req.body
 
     const session = getSession(sessionId)
-
-    if (!session) {
-        return response(res, 404, false, 'Session not found.')
-    }
+    if (!session) return response(res, 404, false, 'Session not found.')
 
     try {
-        await session.sendMessage(to, message)
+        await session.sendMessage(receiver, message)
         response(res, 200, true, 'Message sent.')
     } catch (err) {
         response(res, 500, false, 'Failed to send message.', err.message)
     }
 }
 
-// Enviar mensagem em massa (texto)
 export const sendBulkMessage = async (req, res) => {
-    const { sessionId } = req.params
-    const { numbers, message } = req.body
+    const { id: sessionId } = req.query
+    const { receivers, message } = req.body
 
     const session = getSession(sessionId)
-
-    if (!session) {
-        return response(res, 404, false, 'Session not found.')
-    }
+    if (!session) return response(res, 404, false, 'Session not found.')
 
     try {
         const results = []
-
-        for (const number of numbers) {
+        for (const number of receivers) {
             const result = await session.sendMessage(number, message)
             results.push({ number, status: 'sent', result })
         }
-
         response(res, 200, true, 'Bulk message sent.', results)
     } catch (err) {
         response(res, 500, false, 'Failed to send bulk message.', err.message)
     }
 }
 
-// Enviar imagem
 export const sendImage = async (req, res) => {
-    const { sessionId } = req.params
-    const { to, imageUrl, caption } = req.body
+    const { id: sessionId } = req.query
+    const { receiver, mediaUrl, caption } = req.body
 
     const session = getSession(sessionId)
-
-    if (!session) {
-        return response(res, 404, false, 'Session not found.')
-    }
+    if (!session) return response(res, 404, false, 'Session not found.')
 
     try {
         const mediaPath = resolve(__dirname, '../temp', 'image.jpg')
-        await downloadFile(imageUrl, mediaPath)
+        await downloadFile(mediaUrl, mediaPath)
 
         const media = await session.loadMedia(mediaPath)
-        await session.sendMessage(to, media, { caption })
+        await session.sendMessage(receiver, media, { caption })
 
         fs.unlinkSync(mediaPath)
 
@@ -92,23 +77,19 @@ export const sendImage = async (req, res) => {
     }
 }
 
-// Enviar vídeo
 export const sendVideo = async (req, res) => {
-    const { sessionId } = req.params
-    const { to, videoUrl, caption } = req.body
+    const { id: sessionId } = req.query
+    const { receiver, mediaUrl, caption } = req.body
 
     const session = getSession(sessionId)
-
-    if (!session) {
-        return response(res, 404, false, 'Session not found.')
-    }
+    if (!session) return response(res, 404, false, 'Session not found.')
 
     try {
         const mediaPath = resolve(__dirname, '../temp', 'video.mp4')
-        await downloadFile(videoUrl, mediaPath)
+        await downloadFile(mediaUrl, mediaPath)
 
         const media = await session.loadMedia(mediaPath)
-        await session.sendMessage(to, media, { caption })
+        await session.sendMessage(receiver, media, { caption })
 
         fs.unlinkSync(mediaPath)
 
@@ -118,23 +99,19 @@ export const sendVideo = async (req, res) => {
     }
 }
 
-// Enviar áudio
 export const sendAudio = async (req, res) => {
-    const { sessionId } = req.params
-    const { to, audioUrl } = req.body
+    const { id: sessionId } = req.query
+    const { receiver, mediaUrl } = req.body
 
     const session = getSession(sessionId)
-
-    if (!session) {
-        return response(res, 404, false, 'Session not found.')
-    }
+    if (!session) return response(res, 404, false, 'Session not found.')
 
     try {
         const mediaPath = resolve(__dirname, '../temp', 'audio.mp3')
-        await downloadFile(audioUrl, mediaPath)
+        await downloadFile(mediaUrl, mediaPath)
 
         const media = await session.loadMedia(mediaPath)
-        await session.sendMessage(to, media, { sendAudioAsVoice: true })
+        await session.sendMessage(receiver, media, { sendAudioAsVoice: true })
 
         fs.unlinkSync(mediaPath)
 
@@ -144,16 +121,12 @@ export const sendAudio = async (req, res) => {
     }
 }
 
-// Enviar texto com botões
-export const sendTextButton = async (req, res) => {
-    const { sessionId } = req.params
-    const { to, message, buttons, footer } = req.body
+export const sendTextWithButton = async (req, res) => {
+    const { id: sessionId } = req.query
+    const { receiver, message, buttons, footer } = req.body
 
     const session = getSession(sessionId)
-
-    if (!session) {
-        return response(res, 404, false, 'Session not found.')
-    }
+    if (!session) return response(res, 404, false, 'Session not found.')
 
     try {
         const buttonTemplate = {
@@ -163,7 +136,7 @@ export const sendTextButton = async (req, res) => {
             headerType: 1
         }
 
-        await session.sendMessage(to, buttonTemplate)
+        await session.sendMessage(receiver, buttonTemplate)
 
         response(res, 200, true, 'Button message sent.')
     } catch (err) {
