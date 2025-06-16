@@ -6,12 +6,11 @@ import __dirname from './dirname.js'
 import response from './response.js'
 import axios from 'axios'
 import express from 'express'
-import pkg from 'baileys'
+import pkg from '@whiskeysockets/baileys'
 
 const {
   default: makeWASocket,
   useMultiFileAuthState,
-  makeInMemoryStore,
   Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
@@ -51,7 +50,6 @@ app.post('/chats/send', async (req, res) => {
   }
 })
 
-
 // Diretórios e reconexões
 const sessionsDir = id => join(__dirname, 'sessions', id)
 
@@ -75,7 +73,6 @@ const isSessionExists = id => {
 async function createSession(sessionId, isLegacy = false, res = null) {
   const fileId = (isLegacy ? 'legacy_' : 'md_') + sessionId
   const logger = pino({ level: 'silent' })
-  const store = makeInMemoryStore({ logger })
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionsDir(fileId))
   const { version } = await fetchLatestBaileysVersion()
@@ -101,10 +98,7 @@ async function createSession(sessionId, isLegacy = false, res = null) {
     }
   })
 
-  store.readFromFile(sessionsDir(`${fileId}_store.json`))
-  store.bind(sock.ev)
-
-  sessions.set(sessionId, { sock, store, isLegacy })
+  sessions.set(sessionId, { sock, isLegacy })
 
   sock.ev.on('creds.update', saveCreds)
 
@@ -148,7 +142,7 @@ async function createSession(sessionId, isLegacy = false, res = null) {
 // ❌ Deleta sessão
 function deleteSession(sessionId) {
   const fileId = `md_${sessionId}`
-  ;[fileId, `${fileId}_store.json`].forEach(f =>
+  ;[fileId].forEach(f =>
     rmSync(sessionsDir(f), { force: true, recursive: true })
   )
   sessions.delete(sessionId)
@@ -156,11 +150,12 @@ function deleteSession(sessionId) {
 }
 
 // 📑 Lista chats
-function getChatList(sessionId, isGroup = false) {
+async function getChatList(sessionId, isGroup = false) {
   const entry = sessions.get(sessionId)
   if (!entry) return []
   const filter = isGroup ? '@g.us' : '@s.whatsapp.net'
-  return entry.store.chats.filter(c => c.id.endsWith(filter))
+  const chats = await entry.sock.chatFetchAll()
+  return chats.filter(c => c.id.endsWith(filter))
 }
 
 // 🔍 Verifica existência
@@ -171,7 +166,7 @@ async function isExists(session, jid, isGroup = false) {
       return Boolean(gm.id)
     }
     const [r] = await session.onWhatsApp(jid)
-    return !!r.exists
+    return !!r?.exists
   } catch {
     return false
   }
@@ -198,9 +193,7 @@ function formatGroup(grp) {
 // 🧹 Cleanup
 function cleanup() {
   console.log('🧹 Running cleanup before exit.')
-  sessions.forEach((s, id) => {
-    try { s.store.writeToFile() } catch {}
-  })
+  // As credenciais são salvas automaticamente
 }
 
 // 🚀 Init (carregar sessões existentes)
@@ -208,7 +201,7 @@ function init() {
   try {
     readdirSync(sessionsDir()).forEach(f => {
       if (!/^md_|^legacy_/.test(f)) return
-      const id = f.replace(/^(md_|legacy_)/, '').replace(/\.json$/, '')
+      const id = f.replace(/^(md_|legacy_)/, '')
       createSession(id, f.startsWith('legacy_'))
     })
   } catch {}
