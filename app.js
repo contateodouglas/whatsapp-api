@@ -7,25 +7,23 @@ import cors from 'cors'
 
 const app = express()
 
-const host = process.env.WA_SERVER_HOST || undefined
-const port = parseInt(process.env.PORT ?? process.env.WA_SERVER_PORT ?? 8000)
+// Na Render, é OBRIGATÓRIO usar a variável PORT automaticamente fornecida
+const port = process.env.PORT || process.env.WA_SERVER_PORT || 8000
 
 app.use(cors())
 app.use(express.urlencoded({ extended: true }))
 app.use(express.json())
+
+// Rotas
 app.use('/', routes)
 
-const listenerCallback = () => {
+// Iniciar servidor
+app.listen(port, '0.0.0.0', () => {
     init()
-    console.log(`Server is listening on http://${host ? host : 'localhost'}:${port}`)
-}
+    console.log(`✅ Server is listening on http://0.0.0.0:${port}`)
+})
 
-if (host) {
-    app.listen(port, host, listenerCallback)
-} else {
-    app.listen(port, listenerCallback)
-}
-
+// Limpeza ao encerrar
 nodeCleanup(cleanup)
 
 export default app

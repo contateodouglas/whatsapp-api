@@ -1,26 +1,78 @@
 import { Router } from 'express'
 import { body, query } from 'express-validator'
-import requestValidator from './../middlewares/requestValidator.js'
-import sessionValidator from './../middlewares/sessionValidator.js'
-import * as controller from './../controllers/chatsController.js'
-import getMessages from './../controllers/getMessages.js'
+import controller from '../controllers/chatsController.js'
+import requestValidator from '../middlewares/requestValidator.js'
+import sessionValidator from '../middlewares/sessionValidator.js'
 
 const router = Router()
 
-router.get('/', query('id').notEmpty(), requestValidator, sessionValidator, controller.getList)
-
-router.get('/:jid', query('id').notEmpty(), requestValidator, sessionValidator, getMessages)
-
+// Enviar mensagem de texto
 router.post(
-    '/send',
-    query('id').notEmpty(),
-    body('receiver').notEmpty(),
-    body('message').notEmpty(),
-    requestValidator,
-    sessionValidator,
-    controller.send
+  '/send-message',
+  query('id').notEmpty(),
+  body('receiver').notEmpty(),
+  body('message').notEmpty(),
+  requestValidator,
+  sessionValidator,
+  controller.sendMessage
 )
 
-router.post('/send-bulk', query('id').notEmpty(), requestValidator, sessionValidator, controller.sendBulk)
+// Enviar mensagem em massa
+router.post(
+  '/send-bulk-message',
+  query('id').notEmpty(),
+  body('receivers').isArray({ min: 1 }),
+  body('message').notEmpty(),
+  requestValidator,
+  sessionValidator,
+  controller.sendBulkMessage
+)
+
+// Enviar imagem
+router.post(
+  '/send-image',
+  query('id').notEmpty(),
+  body('receiver').notEmpty(),
+  body('mediaUrl').notEmpty(),
+  body('caption').optional(),
+  requestValidator,
+  sessionValidator,
+  controller.sendImage
+)
+
+// Enviar vídeo
+router.post(
+  '/send-video',
+  query('id').notEmpty(),
+  body('receiver').notEmpty(),
+  body('mediaUrl').notEmpty(),
+  body('caption').optional(),
+  requestValidator,
+  sessionValidator,
+  controller.sendVideo
+)
+
+// Enviar áudio
+router.post(
+  '/send-audio',
+  query('id').notEmpty(),
+  body('receiver').notEmpty(),
+  body('mediaUrl').notEmpty(),
+  requestValidator,
+  sessionValidator,
+  controller.sendAudio
+)
+
+// Enviar texto com botões
+router.post(
+  '/send-text-button',
+  query('id').notEmpty(),
+  body('receiver').notEmpty(),
+  body('message').notEmpty(),
+  body('buttons').isArray({ min: 1 }),
+  requestValidator,
+  sessionValidator,
+  controller.sendTextWithButton
+)
 
 export default router

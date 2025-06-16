@@ -1,78 +1,172 @@
-import { getSession, getChatList, isExists, sendMessage, formatPhone } from './../whatsapp.js'
-import response from './../response.js'
+import response from '../response.js'
+import { getSession } from '../whatsapp.js'
+import { fileURLToPath } from 'url'
+import { dirname, resolve } from 'path'
+import axios from 'axios'
+import fs from 'fs'
 
-const getList = (req, res) => {
-    return response(res, 200, true, '', getChatList(res.locals.sessionId))
+const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// Função para baixar arquivos temporários
+async function downloadFile(fileUrl, outputLocationPath) {
+    const writer = fs.createWriteStream(outputLocationPath)
+    const response = await axios({
+        method: 'get',
+        url: fileUrl,
+        responseType: 'stream'
+    })
+    response.data.pipe(writer)
+    return new Promise((resolve, reject) => {
+        writer.on('finish', resolve)
+        writer.on('error', reject)
+    })
 }
 
-const send = async (req, res) => {
-    const session = getSession(res.locals.sessionId)
-    const receiver = formatPhone(req.body.receiver)
-    const delay = req.body.delay
-    const { message } = req.body
+// Enviar mensagem de texto
+export const sendMessage = async (req, res) => {
+    const { sessionId } = req.params
+    const { to, message } = req.body
+
+    const session = getSession(sessionId)
+
+    if (!session) {
+        return response(res, 404, false, 'Session not found.')
+    }
 
     try {
-        const exists = await isExists(session, receiver)
-
-        if (!exists) {
-            return response(res, 400, false, 'The receiver number is not exists.')
-        }
-        
-        await sendMessage(session, receiver,message, delay)
-
-        response(res, 200, true, 'The message has been successfully sent.')
-    } catch {
-        response(res, 500, false, 'Failed to send the message.')
+        await session.sendMessage(to, message)
+        response(res, 200, true, 'Message sent.')
+    } catch (err) {
+        response(res, 500, false, 'Failed to send message.', err.message)
     }
 }
 
-const sendBulk = async (req, res) => {
-    const session = getSession(res.locals.sessionId)
-    const errors = []
+// Enviar mensagem em massa (texto)
+export const sendBulkMessage = async (req, res) => {
+    const { sessionId } = req.params
+    const { numbers, message } = req.body
 
-    for (const [key, data] of req.body.entries()) {
-        let { receiver, message, delay } = data
+    const session = getSession(sessionId)
 
-        if (!receiver || !message) {
-            errors.push(key)
-
-            continue
-        }
-
-        if (!delay || isNaN(delay)) {
-            delay = 1000
-        }
-
-        receiver = formatPhone(receiver)
-
-        try {
-            const exists = await isExists(session, receiver)
-
-            if (!exists) {
-                errors.push(key)
-
-                continue
-            }
-
-            await sendMessage(session, receiver, message, delay)
-        } catch {
-            errors.push(key)
-        }
+    if (!session) {
+        return response(res, 404, false, 'Session not found.')
     }
 
-    if (errors.length === 0) {
-        return response(res, 200, true, 'All messages has been successfully sent.')
+    try {
+        const results = []
+
+        for (const number of numbers) {
+            const result = await session.sendMessage(number, message)
+            results.push({ number, status: 'sent', result })
+        }
+
+        response(res, 200, true, 'Bulk message sent.', results)
+    } catch (err) {
+        response(res, 500, false, 'Failed to send bulk message.', err.message)
     }
-
-    const isAllFailed = errors.length === req.body.length
-
-    response(
-        res,
-        isAllFailed ? 500 : 200,
-        !isAllFailed,
-        isAllFailed ? 'Failed to send all messages.' : 'Some messages has been successfully sent.',
-        { errors }
-    )
 }
 
-export { getList, send, sendBulk }
+// Enviar imagem
+export const sendImage = async (req, res) => {
+    const { sessionId } = req.params
+    const { to, imageUrl, caption } = req.body
+
+    const session = getSession(sessionId)
+
+    if (!session) {
+        return response(res, 404, false, 'Session not found.')
+    }
+
+    try {
+        const mediaPath = resolve(__dirname, '../temp', 'image.jpg')
+        await downloadFile(imageUrl, mediaPath)
+
+        const media = await session.loadMedia(mediaPath)
+        await session.sendMessage(to, media, { caption })
+
+        fs.unlinkSync(mediaPath)
+
+        response(res, 200, true, 'Image sent.')
+    } catch (err) {
+        response(res, 500, false, 'Failed to send image.', err.message)
+    }
+}
+
+// Enviar vídeo
+export const sendVideo = async (req, res) => {
+    const { sessionId } = req.params
+    const { to, videoUrl, caption } = req.body
+
+    const session = getSession(sessionId)
+
+    if (!session) {
+        return response(res, 404, false, 'Session not found.')
+    }
+
+    try {
+        const mediaPath = resolve(__dirname, '../temp', 'video.mp4')
+        await downloadFile(videoUrl, mediaPath)
+
+        const media = await session.loadMedia(mediaPath)
+        await session.sendMessage(to, media, { caption })
+
+        fs.unlinkSync(mediaPath)
+
+        response(res, 200, true, 'Video sent.')
+    } catch (err) {
+        response(res, 500, false, 'Failed to send video.', err.message)
+    }
+}
+
+// Enviar áudio
+export const sendAudio = async (req, res) => {
+    const { sessionId } = req.params
+    const { to, audioUrl } = req.body
+
+    const session = getSession(sessionId)
+
+    if (!session) {
+        return response(res, 404, false, 'Session not found.')
+    }
+
+    try {
+        const mediaPath = resolve(__dirname, '../temp', 'audio.mp3')
+        await downloadFile(audioUrl, mediaPath)
+
+        const media = await session.loadMedia(mediaPath)
+        await session.sendMessage(to, media, { sendAudioAsVoice: true })
+
+        fs.unlinkSync(mediaPath)
+
+        response(res, 200, true, 'Audio sent.')
+    } catch (err) {
+        response(res, 500, false, 'Failed to send audio.', err.message)
+    }
+}
+
+// Enviar texto com botões
+export const sendTextButton = async (req, res) => {
+    const { sessionId } = req.params
+    const { to, message, buttons, footer } = req.body
+
+    const session = getSession(sessionId)
+
+    if (!session) {
+        return response(res, 404, false, 'Session not found.')
+    }
+
+    try {
+        const buttonTemplate = {
+            text: message,
+            footer,
+            buttons,
+            headerType: 1
+        }
+
+        await session.sendMessage(to, buttonTemplate)
+
+        response(res, 200, true, 'Button message sent.')
+    } catch (err) {
+        response(res, 500, false, 'Failed to send button message.', err.message)
+    }
+}
