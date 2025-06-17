@@ -1,12 +1,15 @@
+
+
+export default router
 import { Router } from 'express'
 import { body, query } from 'express-validator'
-import * as controller from '../controllers/chatsController.js'  // Importação corrigida
+import * as controller from '../controllers/chatsController.js'
 import requestValidator from '../middlewares/requestValidator.js'
 import sessionValidator from '../middlewares/sessionValidator.js'
 
 const router = Router()
 
-// Enviar mensagem de texto
+// Rotas originais
 router.post(
   '/send-message',
   query('id').notEmpty(),
@@ -17,7 +20,6 @@ router.post(
   controller.sendMessage
 )
 
-// Enviar mensagem em massa
 router.post(
   '/send-bulk-message',
   query('id').notEmpty(),
@@ -28,7 +30,6 @@ router.post(
   controller.sendBulkMessage
 )
 
-// Enviar imagem
 router.post(
   '/send-image',
   query('id').notEmpty(),
@@ -40,7 +41,6 @@ router.post(
   controller.sendImage
 )
 
-// Enviar vídeo
 router.post(
   '/send-video',
   query('id').notEmpty(),
@@ -52,7 +52,6 @@ router.post(
   controller.sendVideo
 )
 
-// Enviar áudio
 router.post(
   '/send-audio',
   query('id').notEmpty(),
@@ -63,9 +62,30 @@ router.post(
   controller.sendAudio
 )
 
-// Enviar texto com botões
 router.post(
   '/send-text-button',
+  query('id').notEmpty(),
+  body('receiver').notEmpty(),
+  body('message').notEmpty(),
+  body('buttons').isArray({ min: 1 }),
+  requestValidator,
+  sessionValidator,
+  controller.sendTextWithButton
+)
+
+// Rotas alias para front-end existente
+router.post(
+  '/user/sent-whatsapp-custom-text/plain-text',
+  query('id').notEmpty(),
+  body('receiver').notEmpty(),
+  body('message').notEmpty(),
+  requestValidator,
+  sessionValidator,
+  controller.sendMessage
+)
+
+router.post(
+  '/user/sent-whatsapp-custom-text/text-with-button',
   query('id').notEmpty(),
   body('receiver').notEmpty(),
   body('message').notEmpty(),
