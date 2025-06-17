@@ -77,7 +77,7 @@ router.post(
 
 // Rotas alias para front-end existente
 router.post(
-  '/user/sent-whatsapp-custom-text/plain-text',
+  'plain-text',
   query('id').notEmpty(),
   body('receiver').notEmpty(),
   body('message').notEmpty(),
