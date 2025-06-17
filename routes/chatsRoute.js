@@ -8,7 +8,7 @@ const router = Router()
 
 // Enviar mensagem de texto
 router.post(
-  '/send-message',
+  '/user/sent-whatsapp-custom-text/plain-text',
   query('id').notEmpty(),
   body('receiver').notEmpty(),
   body('message').notEmpty(),
