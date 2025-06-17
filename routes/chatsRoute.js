@@ -77,7 +77,7 @@ router.post(
 
 // Rotas alias para front-end existente
 router.post(
-  'plain-text',
+  '/user/sent-text-message/plain-text',
   query('id').notEmpty(),
   body('receiver').notEmpty(),
   body('message').notEmpty(),
