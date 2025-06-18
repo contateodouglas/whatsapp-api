@@ -98,7 +98,7 @@ async function createSession(sessionId, isLegacy = false, res = null) {
     }
   })
 
-  sessions.set(sessionId, { sock, isLegacy })
+sessions.set(`device_${sessionId}`, { sock, isLegacy })
 
   sock.ev.on('creds.update', saveCreds)
 
