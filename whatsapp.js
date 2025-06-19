@@ -17,13 +17,13 @@ const {
   delay
 } = pkg
 
-// Mapas de sessão e retries
 const sessions = new Map()
 const retries = new Map()
 
-// Pequeno servidor interno para rota /chats/send
+// 🔸 Servidor para envio de mensagens
 const app = express()
 app.use(express.json())
+
 app.post('/chats/send', async (req, res) => {
   const { device, receiver, message, delay: delayMs = 0 } = req.body
   const entry = sessions.get(`device_${device}`)
@@ -31,16 +31,13 @@ app.post('/chats/send', async (req, res) => {
 
   try {
     if (delayMs) await new Promise(r => setTimeout(r, delayMs))
-    const interactive = Boolean(message.buttonsMessage || message.listMessage)
-    const payload = interactive
-      ? { viewOnceMessage: { message } }
-      : message
 
     const toJid = /^\d+@s\.whatsapp\.net$/.test(receiver)
       ? receiver
       : `${receiver.replace(/\D/g, '')}@s.whatsapp.net`
 
-    const result = await entry.sock.sendMessage(toJid, payload)
+    const result = await entry.sock.sendMessage(toJid, message)
+
     return res.json({ success: true, data: result })
   } catch (e) {
     console.error('🔥 /chats/send error:', e)
@@ -48,10 +45,9 @@ app.post('/chats/send', async (req, res) => {
   }
 })
 
-// Auxiliar para localizar credenciais
+// 🔸 Gerenciamento de diretórios de sessão
 const sessionsDir = id => join(__dirname, 'sessions', id)
 
-// Controla tentativas de reconexão
 const shouldReconnect = id => {
   const max = +process.env.MAX_RETRIES || 3
   const at = retries.get(id) || 0
@@ -63,10 +59,9 @@ const shouldReconnect = id => {
   return false
 }
 
-// Verifica existência
 const isSessionExists = id => sessions.has(`device_${id}`)
 
-// Cria sessão
+// 🔸 Criação da sessão
 async function createSession(sessionId, isLegacy = false, res = null) {
   const fileId = (isLegacy ? 'legacy_' : 'md_') + sessionId
   const logger = pino({ level: 'silent' })
@@ -79,23 +74,9 @@ async function createSession(sessionId, isLegacy = false, res = null) {
     auth: state,
     logger,
     browser: Browsers.ubuntu('Chrome'),
-    printQRInTerminal: false,
-    patchMessageBeforeSending: msg => {
-      if (msg.buttonsMessage || msg.listMessage) {
-        return {
-          viewOnceMessage: {
-            message: {
-              messageContextInfo: { deviceListMetadataVersion: 2, deviceListMetadata: {} },
-              ...msg
-            }
-          }
-        }
-      }
-      return msg
-    }
+    printQRInTerminal: false
   })
 
-  // Armazena sock junto com flag legacy
   sessions.set(`device_${sessionId}`, { sock, isLegacy })
 
   sock.ev.on('creds.update', saveCreds)
@@ -103,18 +84,13 @@ async function createSession(sessionId, isLegacy = false, res = null) {
   sock.ev.on('messages.upsert', m => {
     const msg = m.messages[0]
     if (msg && !msg.key.fromMe && !msg.key.remoteJid.endsWith('@g.us')) {
-      axios.post(process.env.WEBHOOK_URL, {
-        sessionId,
-        remote_id: msg.key.remoteJid,
-        message: msg.message
-      }).catch(console.error)
-	     if (process.env.WEBHOOK_URL) {
-    axios.post(process.env.WEBHOOK_URL, {
-     sessionId,
-      remote_id: msg.key.remoteJid,
-     message: msg.message
-    }).catch(console.error)
-  }
+      if (process.env.WEBHOOK_URL) {
+        axios.post(process.env.WEBHOOK_URL, {
+          sessionId,
+          remote_id: msg.key.remoteJid,
+          message: msg.message
+        }).catch(console.error)
+      }
     }
   })
 
@@ -126,6 +102,7 @@ async function createSession(sessionId, isLegacy = false, res = null) {
       retries.delete(sessionId)
       console.log(`✅ device_${sessionId} connected`)
     }
+
     if (connection === 'close') {
       if (code === DisconnectReason.loggedOut || !shouldReconnect(sessionId)) {
         if (res && !res.headersSent) response(res, 500, false, 'Unable to create session.')
@@ -136,6 +113,7 @@ async function createSession(sessionId, isLegacy = false, res = null) {
         )
       }
     }
+
     if (qr && res && !res.headersSent) {
       toDataURL(qr)
         .then(q => response(res, 200, true, 'QR received', { qr: q }))
@@ -144,7 +122,7 @@ async function createSession(sessionId, isLegacy = false, res = null) {
   })
 }
 
-// Deleta sessão e credenciais
+// 🔸 Exclusão da sessão
 function deleteSession(sessionId, isLegacy = false) {
   const fileId = (isLegacy ? 'legacy_' : 'md_') + sessionId
   rmSync(sessionsDir(fileId), { force: true, recursive: true })
@@ -152,7 +130,7 @@ function deleteSession(sessionId, isLegacy = false) {
   retries.delete(sessionId)
 }
 
-// Busca lista de chats
+// 🔸 Lista de chats
 async function getChatList(sessionId, isGroup = false) {
   const entry = sessions.get(`device_${sessionId}`)
   if (!entry) return []
@@ -161,7 +139,7 @@ async function getChatList(sessionId, isGroup = false) {
   return Object.values(all).filter(c => c.id.endsWith(filter))
 }
 
-// Verifica existência
+// 🔸 Verificar existência de número ou grupo
 async function isExists(session, jid, isGroup = false) {
   try {
     if (isGroup) {
@@ -175,27 +153,29 @@ async function isExists(session, jid, isGroup = false) {
   }
 }
 
-// Envio genérico
+// 🔸 Envio genérico
 async function sendMessage(session, to, message, ms = 0) {
   await delay(ms)
   return session.sendMessage(to, message)
 }
 
-// Formatação auxiliar
+// 🔸 Formatação de números e grupos
 function formatPhone(phone) {
   const f = phone.replace(/\D/g, '')
   return f.endsWith('@s.whatsapp.net') ? f : `${f}@s.whatsapp.net`
 }
+
 function formatGroup(grp) {
   const f = grp.replace(/[^\d-]/g, '')
   return f.endsWith('@g.us') ? f : `${f}@g.us`
 }
 
-// Limpeza de credenciais antes de sair
+// 🔸 Limpeza (não utilizado)
 function cleanup() {
-  // nada extra
+  // vazio
 }
 
+// 🔸 Inicialização automática
 function init() {
   try {
     readdirSync(join(__dirname, 'sessions')).forEach(f => {
@@ -206,6 +186,7 @@ function init() {
   } catch {}
 }
 
+// 🔸 Recuperar sessão ativa
 function getSession(sessionId) {
   const e = sessions.get(`device_${sessionId}`)
   return e?.sock ?? null
