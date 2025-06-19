@@ -108,6 +108,13 @@ async function createSession(sessionId, isLegacy = false, res = null) {
         remote_id: msg.key.remoteJid,
         message: msg.message
       }).catch(console.error)
+	     if (process.env.WEBHOOK_URL) {
+    axios.post(process.env.WEBHOOK_URL, {
+     sessionId,
+      remote_id: msg.key.remoteJid,
+     message: msg.message
+    }).catch(console.error)
+  }
     }
   })
 
