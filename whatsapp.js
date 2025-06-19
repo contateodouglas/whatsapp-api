@@ -17,34 +17,26 @@ const {
   delay
 } = pkg
 
-// Mapas de sessão e retries
 const sessions = new Map()
 const retries = new Map()
 
-// Servidor interno para envio de mensagens via HTTP
 const app = express()
 app.use(express.json())
 
-// Rota para envio de mensagens (usada pelo Laravel)
+// —————————————————————————————————————————————————————
+// ✅ Rota interna opcional para envio rápido (via HTTP)
+// —————————————————————————————————————————————————————
 app.post('/chats/send', async (req, res) => {
   const { device, receiver, message, delay: delayMs = 0 } = req.body
   const entry = sessions.get(`device_${device}`)
   if (!entry) return res.status(404).json({ message: 'Session not found' })
 
   try {
-    if (delayMs) await new Promise(r => setTimeout(r, delayMs))
+    if (delayMs) await delay(delayMs)
 
-    const toJid = /^\d+@s\.whatsapp\.net$/.test(receiver)
-      ? receiver
-      : `${receiver.replace(/\D/g, '')}@s.whatsapp.net`
+    const toJid = formatPhone(receiver)
 
-    // Reconhece mensagens interativas e formata payload corretamente
-    let payload = message
-    if (message.buttonsMessage) {
-      payload = { buttonMessage: message.buttonsMessage }
-    } else if (message.listMessage) {
-      payload = { listMessage: message.listMessage }
-    }
+    const payload = buildMessagePayload(message)
 
     const result = await entry.sock.sendMessage(toJid, payload)
     return res.json({ success: true, data: result })
@@ -53,6 +45,24 @@ app.post('/chats/send', async (req, res) => {
     return res.status(500).json({ message: 'Failed to send message' })
   }
 })
+
+// —————————————————————————————————————————————————————
+// 🔧 Função auxiliar para construção do payload correto
+// —————————————————————————————————————————————————————
+function buildMessagePayload(message) {
+  if (message.templateButtons) {
+    const { text, footer, templateButtons } = message
+    return { text, footer, templateButtons }
+  } else if (message.listMessage) {
+    return { listMessage: message.listMessage }
+  } else {
+    return message
+  }
+}
+
+// —————————————————————————————————————————————————————
+// 🚀 Funções principais
+// —————————————————————————————————————————————————————
 
 // Gerenciamento de diretórios de sessão
 const sessionsDir = id => join(__dirname, 'sessions', id)
@@ -70,7 +80,6 @@ const shouldReconnect = id => {
 
 const isSessionExists = id => sessions.has(`device_${id}`)
 
-// Cria nova sessão WhatsApp
 async function createSession(sessionId, isLegacy = false, res = null) {
   const fileId = (isLegacy ? 'legacy_' : 'md_') + sessionId
   const logger = pino({ level: 'silent' })
@@ -128,7 +137,6 @@ async function createSession(sessionId, isLegacy = false, res = null) {
   })
 }
 
-// Deleta sessão
 function deleteSession(sessionId, isLegacy = false) {
   const fileId = (isLegacy ? 'legacy_' : 'md_') + sessionId
   rmSync(sessionsDir(fileId), { force: true, recursive: true })
@@ -136,7 +144,6 @@ function deleteSession(sessionId, isLegacy = false) {
   retries.delete(sessionId)
 }
 
-// Lista de chats (privados ou grupos)
 async function getChatList(sessionId, isGroup = false) {
   const entry = sessions.get(`device_${sessionId}`)
   if (!entry) return []
@@ -145,7 +152,6 @@ async function getChatList(sessionId, isGroup = false) {
   return Object.values(all).filter(c => c.id.endsWith(filter))
 }
 
-// Verifica se um número ou grupo existe
 async function isExists(session, jid, isGroup = false) {
   try {
     if (isGroup) {
@@ -159,26 +165,27 @@ async function isExists(session, jid, isGroup = false) {
   }
 }
 
-// Envio genérico
 async function sendMessage(session, to, message, ms = 0) {
   await delay(ms)
-  return session.sendMessage(to, message)
+  const payload = buildMessagePayload(message)
+  return session.sendMessage(to, payload)
 }
 
-// Formatação de telefone e grupo
+// —————————————————————————————————————————————————————
+// 🔗 Utilitários
+// —————————————————————————————————————————————————————
 function formatPhone(phone) {
   const f = phone.replace(/\D/g, '')
   return f.endsWith('@s.whatsapp.net') ? f : `${f}@s.whatsapp.net`
 }
+
 function formatGroup(grp) {
   const f = grp.replace(/[^\d-]/g, '')
   return f.endsWith('@g.us') ? f : `${f}@g.us`
 }
 
-// Cleanup (opcional)
 function cleanup() {}
 
-// Inicializa sessões ao startup
 function init() {
   try {
     readdirSync(join(__dirname, 'sessions')).forEach(f => {
@@ -189,12 +196,14 @@ function init() {
   } catch {}
 }
 
-// Retorna socket de sessão ativa
 function getSession(sessionId) {
   const e = sessions.get(`device_${sessionId}`)
   return e?.sock ?? null
 }
 
+// —————————————————————————————————————————————————————
+// 🚀 Exports
+// —————————————————————————————————————————————————————
 export {
   init,
   cleanup,

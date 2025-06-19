@@ -7,7 +7,7 @@ import sessionValidator from '../middlewares/sessionValidator.js'
 
 const router = Router()
 
-// rota “oficial”
+// 🚩 Rota principal de envio
 router.post(
   '/send',
   query('id').notEmpty(),
@@ -18,12 +18,12 @@ router.post(
   messageSend
 )
 
-// aliases para manter compatibilidade com o PHP (não altera nada no Laravel)
+// 🚩 Aliases para compatibilidade (se realmente precisar)
 router.post(
   '/user/sent-whatsapp-custom-text/plain-text',
   query('id').notEmpty(),
   body('receiver').notEmpty(),
-  body('message').isObject(),        // aqui message = { text: "..." }
+  body('message').isObject(), // { text: "..." }
   requestValidator,
   sessionValidator,
   messageSend
@@ -33,7 +33,17 @@ router.post(
   '/user/sent-whatsapp-custom-text/text-with-button',
   query('id').notEmpty(),
   body('receiver').notEmpty(),
-  body('message').isObject(),        // aqui message = { buttonsMessage: { … } }
+  body('message').isObject(), // Agora { templateButtons: [ ... ] }
+  requestValidator,
+  sessionValidator,
+  messageSend
+)
+
+router.post(
+  '/user/sent-whatsapp-custom-text/list-message',
+  query('id').notEmpty(),
+  body('receiver').notEmpty(),
+  body('message').isObject(), // { listMessage: { ... } }
   requestValidator,
   sessionValidator,
   messageSend
