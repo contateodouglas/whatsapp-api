@@ -2,15 +2,6 @@
 import response from '../response.js'
 import { getSession } from '../whatsapp.js'
 
-/**
- * POST /chats/send?id=device_{id}
- * Body JSON:
- * {
- *   "receiver": "5511999999999",  // ou JID completo
- *   "delay": 1000,                // opcional em ms
- *   "message": { … payload … }    // já formatado pelo PHP trait
- * }
- */
 export const messageSend = async (req, res) => {
   const { id: sessionId } = req.query
   const { receiver, delay = 0, message } = req.body
@@ -24,48 +15,43 @@ export const messageSend = async (req, res) => {
     return response(res, 400, false, 'Receiver and message are required.')
   }
 
+  const to = receiver.includes('@')
+    ? receiver
+    : `${receiver.replace(/\D/g, '')}@s.whatsapp.net`
+
   try {
-    const to = receiver.includes('@')
-      ? receiver
-      : `${receiver.replace(/\D/g, '')}@s.whatsapp.net`
-
     if (delay > 0) {
-      await new Promise(r => setTimeout(r, Number(delay)))
+      await new Promise(resolve => setTimeout(resolve, Number(delay)))
     }
 
-    // 🔥 Validação específica para evitar erro "Invalid media type"
-    if (
-      typeof message !== 'object' ||
-      Object.keys(message).length === 0
-    ) {
-      return response(res, 400, false, 'Invalid message payload.')
-    }
+    const mediaKeys = ['image', 'video', 'audio', 'document']
+    const isMedia = mediaKeys.some(key => key in message)
 
-    const mediaKeys = ['image', 'video', 'document', 'audio']
+    if (isMedia) {
+      const mediaType = mediaKeys.find(key => key in message)
+      const media = message[mediaType]
 
-    const hasMedia = mediaKeys.some(key => key in message)
-
-    if (hasMedia) {
-      const mediaKey = mediaKeys.find(key => key in message)
-      const mediaObj = message[mediaKey]
-
-      if (!mediaObj || !mediaObj.url) {
-        return response(res, 400, false, `Missing URL for ${mediaKey}.`)
+      if (!media || !media.url) {
+        return response(res, 400, false, `Missing url for ${mediaType}.`)
       }
 
-      if (mediaKey === 'document' && !message.mimetype) {
-        return response(res, 400, false, 'Mimetype is required for document.')
+      if (mediaType === 'document') {
+        if (!message.mimetype) {
+          return response(res, 400, false, 'Mimetype is required for document.')
+        }
+        if (!message.fileName) {
+          return response(res, 400, false, 'fileName is required for document.')
+        }
       }
 
-      if (mediaKey === 'audio' && !message.mimetype) {
-        // Definir um mimetype padrão se não vier
-        message.mimetype = 'audio/mp4'
+      if (mediaType === 'audio' && !message.mimetype) {
+        message.mimetype = 'audio/mp4' // define padrão
       }
     }
 
     await session.sendMessage(to, message)
 
-    return response(res, 200, true, 'The message has been successfully sent.')
+    return response(res, 200, true, 'Message sent successfully.')
   } catch (err) {
     console.error('🔥 /chats/send error:', err)
     return response(
