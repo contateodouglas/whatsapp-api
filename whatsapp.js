@@ -14,15 +14,14 @@ const {
   Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
-  delay,
-  makeInMemoryStore
+  delay
 } = pkg
 
-// mantenha as sessões e tentativas
+// Mapas de sessão e retries
 const sessions = new Map()
 const retries = new Map()
 
-// servidor interno pra /chats/send
+// Pequeno servidor interno para rota /chats/send
 const app = express()
 app.use(express.json())
 app.post('/chats/send', async (req, res) => {
@@ -49,10 +48,10 @@ app.post('/chats/send', async (req, res) => {
   }
 })
 
-// helper para diretório de credenciais
+// Auxiliar para localizar credenciais
 const sessionsDir = id => join(__dirname, 'sessions', id)
 
-// controlar reconexões
+// Controla tentativas de reconexão
 const shouldReconnect = id => {
   const max = +process.env.MAX_RETRIES || 3
   const at = retries.get(id) || 0
@@ -64,21 +63,15 @@ const shouldReconnect = id => {
   return false
 }
 
-// verifica se já existe
+// Verifica existência
 const isSessionExists = id => sessions.has(`device_${id}`)
 
-// cria ou recarrega sessão
+// Cria sessão
 async function createSession(sessionId, isLegacy = false, res = null) {
   const fileId = (isLegacy ? 'legacy_' : 'md_') + sessionId
   const logger = pino({ level: 'silent' })
 
-  // estado de autenticação
   const { state, saveCreds } = await useMultiFileAuthState(sessionsDir(fileId))
-  const store = makeInMemoryStore({ logger })
-  store.readFromFile(sessionsDir(`${fileId}_store.json`))
-  store.ev.on('write', () => store.writeToFile(sessionsDir(`${fileId}_store.json`)))
-
-  // qual versão do WA
   const { version } = await fetchLatestBaileysVersion()
 
   const sock = makeWASocket({
@@ -102,16 +95,11 @@ async function createSession(sessionId, isLegacy = false, res = null) {
     }
   })
 
-  // bind do store
-  store.bind(sock.ev)
-
-  // adiciona na memória
+  // Armazena sock junto com flag legacy
   sessions.set(`device_${sessionId}`, { sock, isLegacy })
 
-  // persiste credenciais
   sock.ev.on('creds.update', saveCreds)
 
-  // webhook de mensagem recebida
   sock.ev.on('messages.upsert', m => {
     const msg = m.messages[0]
     if (msg && !msg.key.fromMe && !msg.key.remoteJid.endsWith('@g.us')) {
@@ -123,7 +111,6 @@ async function createSession(sessionId, isLegacy = false, res = null) {
     }
   })
 
-  // monitor conexão
   sock.ev.on('connection.update', up => {
     const { connection, lastDisconnect, qr } = up
     const code = lastDisconnect?.error?.output?.statusCode
@@ -150,17 +137,15 @@ async function createSession(sessionId, isLegacy = false, res = null) {
   })
 }
 
-// remove sessão + store.json
+// Deleta sessão e credenciais
 function deleteSession(sessionId, isLegacy = false) {
   const fileId = (isLegacy ? 'legacy_' : 'md_') + sessionId
-  // elimina pasta credenciais e store
   rmSync(sessionsDir(fileId), { force: true, recursive: true })
-  rmSync(sessionsDir(`${fileId}_store.json`), { force: true })
   sessions.delete(`device_${sessionId}`)
   retries.delete(sessionId)
 }
 
-// lista chats (usa store e chatFetchAll)
+// Busca lista de chats
 async function getChatList(sessionId, isGroup = false) {
   const entry = sessions.get(`device_${sessionId}`)
   if (!entry) return []
@@ -169,7 +154,7 @@ async function getChatList(sessionId, isGroup = false) {
   return Object.values(all).filter(c => c.id.endsWith(filter))
 }
 
-// verifica existência de número ou grupo
+// Verifica existência
 async function isExists(session, jid, isGroup = false) {
   try {
     if (isGroup) {
@@ -183,13 +168,13 @@ async function isExists(session, jid, isGroup = false) {
   }
 }
 
-// envia mensagem genérica
+// Envio genérico
 async function sendMessage(session, to, message, ms = 0) {
   await delay(ms)
   return session.sendMessage(to, message)
 }
 
-// utilitários de formatação
+// Formatação auxiliar
 function formatPhone(phone) {
   const f = phone.replace(/\D/g, '')
   return f.endsWith('@s.whatsapp.net') ? f : `${f}@s.whatsapp.net`
@@ -199,11 +184,9 @@ function formatGroup(grp) {
   return f.endsWith('@g.us') ? f : `${f}@g.us`
 }
 
-// salva antes de sair
+// Limpeza de credenciais antes de sair
 function cleanup() {
-  sessions.forEach((entry, k) => {
-    try { entry.sock.ev.emit('write') } catch {}
-  })
+  // nada extra
 }
 
 function init() {
@@ -221,7 +204,6 @@ function getSession(sessionId) {
   return e?.sock ?? null
 }
 
-// exporta tudo
 export {
   init,
   cleanup,
