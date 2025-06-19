@@ -17,13 +17,15 @@ const {
   delay
 } = pkg
 
+// Mapas de sessão e retries
 const sessions = new Map()
 const retries = new Map()
 
-// 🔸 Servidor para envio de mensagens
+// Servidor interno para envio de mensagens via HTTP
 const app = express()
 app.use(express.json())
 
+// Rota para envio de mensagens (usada pelo Laravel)
 app.post('/chats/send', async (req, res) => {
   const { device, receiver, message, delay: delayMs = 0 } = req.body
   const entry = sessions.get(`device_${device}`)
@@ -36,8 +38,15 @@ app.post('/chats/send', async (req, res) => {
       ? receiver
       : `${receiver.replace(/\D/g, '')}@s.whatsapp.net`
 
-    const result = await entry.sock.sendMessage(toJid, message)
+    // Reconhece mensagens interativas e formata payload corretamente
+    let payload = message
+    if (message.buttonsMessage) {
+      payload = { buttonMessage: message.buttonsMessage }
+    } else if (message.listMessage) {
+      payload = { listMessage: message.listMessage }
+    }
 
+    const result = await entry.sock.sendMessage(toJid, payload)
     return res.json({ success: true, data: result })
   } catch (e) {
     console.error('🔥 /chats/send error:', e)
@@ -45,7 +54,7 @@ app.post('/chats/send', async (req, res) => {
   }
 })
 
-// 🔸 Gerenciamento de diretórios de sessão
+// Gerenciamento de diretórios de sessão
 const sessionsDir = id => join(__dirname, 'sessions', id)
 
 const shouldReconnect = id => {
@@ -61,7 +70,7 @@ const shouldReconnect = id => {
 
 const isSessionExists = id => sessions.has(`device_${id}`)
 
-// 🔸 Criação da sessão
+// Cria nova sessão WhatsApp
 async function createSession(sessionId, isLegacy = false, res = null) {
   const fileId = (isLegacy ? 'legacy_' : 'md_') + sessionId
   const logger = pino({ level: 'silent' })
@@ -78,7 +87,6 @@ async function createSession(sessionId, isLegacy = false, res = null) {
   })
 
   sessions.set(`device_${sessionId}`, { sock, isLegacy })
-
   sock.ev.on('creds.update', saveCreds)
 
   sock.ev.on('messages.upsert', m => {
@@ -102,7 +110,6 @@ async function createSession(sessionId, isLegacy = false, res = null) {
       retries.delete(sessionId)
       console.log(`✅ device_${sessionId} connected`)
     }
-
     if (connection === 'close') {
       if (code === DisconnectReason.loggedOut || !shouldReconnect(sessionId)) {
         if (res && !res.headersSent) response(res, 500, false, 'Unable to create session.')
@@ -113,7 +120,6 @@ async function createSession(sessionId, isLegacy = false, res = null) {
         )
       }
     }
-
     if (qr && res && !res.headersSent) {
       toDataURL(qr)
         .then(q => response(res, 200, true, 'QR received', { qr: q }))
@@ -122,7 +128,7 @@ async function createSession(sessionId, isLegacy = false, res = null) {
   })
 }
 
-// 🔸 Exclusão da sessão
+// Deleta sessão
 function deleteSession(sessionId, isLegacy = false) {
   const fileId = (isLegacy ? 'legacy_' : 'md_') + sessionId
   rmSync(sessionsDir(fileId), { force: true, recursive: true })
@@ -130,7 +136,7 @@ function deleteSession(sessionId, isLegacy = false) {
   retries.delete(sessionId)
 }
 
-// 🔸 Lista de chats
+// Lista de chats (privados ou grupos)
 async function getChatList(sessionId, isGroup = false) {
   const entry = sessions.get(`device_${sessionId}`)
   if (!entry) return []
@@ -139,7 +145,7 @@ async function getChatList(sessionId, isGroup = false) {
   return Object.values(all).filter(c => c.id.endsWith(filter))
 }
 
-// 🔸 Verificar existência de número ou grupo
+// Verifica se um número ou grupo existe
 async function isExists(session, jid, isGroup = false) {
   try {
     if (isGroup) {
@@ -153,29 +159,26 @@ async function isExists(session, jid, isGroup = false) {
   }
 }
 
-// 🔸 Envio genérico
+// Envio genérico
 async function sendMessage(session, to, message, ms = 0) {
   await delay(ms)
   return session.sendMessage(to, message)
 }
 
-// 🔸 Formatação de números e grupos
+// Formatação de telefone e grupo
 function formatPhone(phone) {
   const f = phone.replace(/\D/g, '')
   return f.endsWith('@s.whatsapp.net') ? f : `${f}@s.whatsapp.net`
 }
-
 function formatGroup(grp) {
   const f = grp.replace(/[^\d-]/g, '')
   return f.endsWith('@g.us') ? f : `${f}@g.us`
 }
 
-// 🔸 Limpeza (não utilizado)
-function cleanup() {
-  // vazio
-}
+// Cleanup (opcional)
+function cleanup() {}
 
-// 🔸 Inicialização automática
+// Inicializa sessões ao startup
 function init() {
   try {
     readdirSync(join(__dirname, 'sessions')).forEach(f => {
@@ -186,7 +189,7 @@ function init() {
   } catch {}
 }
 
-// 🔸 Recuperar sessão ativa
+// Retorna socket de sessão ativa
 function getSession(sessionId) {
   const e = sessions.get(`device_${sessionId}`)
   return e?.sock ?? null
