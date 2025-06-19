@@ -19,6 +19,12 @@ export const messageSend = async (req, res) => {
   const session = getSession(sessionId)
   if (!session) {
     return response(res, 404, false, 'Session not found.')
+	
+ // --- DEBUG: veja exatamente o payload que vamos enviar ---
+ console.log('→ payload to sendMessage:', {
+to: formatPhone(receiver),
+content: message
+})
   }
 
   // formata o JID (+55xxx…@s.whatsapp.net)
