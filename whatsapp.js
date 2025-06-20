@@ -52,22 +52,27 @@ app.post('/chats/send', async (req, res) => {
 })
 
 function buildPayload(msg) {
-  if (msg.buttonsMessage) {
-    // converte para templateButtons/quickReplyButton
+  // 1) Botões rápidos (quick reply buttons / templateButtons)
+  if (Array.isArray(msg.buttons) && msg.buttons.length > 0) {
     return {
-      text: msg.buttonsMessage.text,
-      footer: msg.buttonsMessage.footer,
-      templateButtons: msg.buttonsMessage.buttons.map(btn => ({
-        index: parseInt(btn.buttonId.replace('id',''), 10),
+      text:   msg.text,
+      footer: msg.footer,
+      templateButtons: msg.buttons.map((btn, idx) => ({
+        index: idx,
         quickReplyButton: {
-          displayText: btn.buttonText.displayText,
-          id: btn.buttonId
+          displayText: btn.buttonText?.displayText ?? btn.displayText ?? '',
+          id:          btn.buttonId       ?? `btn_${idx}`
         }
       }))
     }
-  } else if (msg.listMessage) {
+  }
+
+  // 2) List message (menu de listas)
+  if (msg.listMessage) {
     return { listMessage: msg.listMessage }
   }
+
+  // 3) Qualquer outra estrutura (texto simples, mídia, document, etc)
   return msg
 }
 
