@@ -1,13 +1,14 @@
 import { rmSync, readdirSync } from 'fs'
-import { join } from 'path'
+import { join, dirname as getDirname } from 'path'
+import { fileURLToPath } from 'url'
 import pino from 'pino'
 import { toDataURL } from 'qrcode'
-import dirname from './dirname.js'       // <— renomeado de __dirname para dirname
 import response from './response.js'
 import axios from 'axios'
 import express from 'express'
 import pkg from '@whiskeysockets/baileys'
-
+const __filename = fileURLToPath(import.meta.url)
+const __dirname  = getDirname(__filename)
 const {
   default: makeWASocket,
   useMultiFileAuthState,
