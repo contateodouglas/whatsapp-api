@@ -1,7 +1,7 @@
 // src/whatsapp.js
 import { rmSync, readdirSync } from 'fs'
 import { join, dirname } from 'path'
-import { fileURLToPath } from 'url'
+import { fileURLToPath } from 'url'         // <-- import necessário
 import pino from 'pino'
 import { toDataURL } from 'qrcode'
 import response from './response.js'
@@ -18,15 +18,15 @@ const {
   delay
 } = pkg
 
-// 🔗 Define __dirname em ESM
+// —————————————————————————————————————————————————————
+// Definição de __dirname em módulos ESM
 const __filename = fileURLToPath(import.meta.url)
 const __dirname  = dirname(__filename)
+// —————————————————————————————————————————————————————
 
-// Mapas de sessão e retries
 const sessions = new Map()
 const retries = new Map()
 
-// Servidor interno HTTP
 const app = express()
 app.use(express.json())
 
@@ -53,12 +53,12 @@ app.post('/chats/send', async (req, res) => {
 
 function buildPayload(msg) {
   if (msg.buttonsMessage) {
-    // Reconstrói para Baileys: usa templateButtons
+    // converte para templateButtons/quickReplyButton
     return {
       text: msg.buttonsMessage.text,
       footer: msg.buttonsMessage.footer,
       templateButtons: msg.buttonsMessage.buttons.map(btn => ({
-        index: parseInt(btn.buttonId.replace('id',''),10),
+        index: parseInt(btn.buttonId.replace('id',''), 10),
         quickReplyButton: {
           displayText: btn.buttonText.displayText,
           id: btn.buttonId
@@ -128,7 +128,7 @@ async function createSession(sessionId, isLegacy = false, res = null) {
         deleteSession(sessionId, isLegacy)
       } else {
         setTimeout(() => createSession(sessionId, isLegacy, res),
-          code === DisconnectReason.restartRequired ? 0 : (+process.env.RECONNECT_INTERVAL||5000)
+          code === DisconnectReason.restartRequired ? 0 : (+process.env.RECONNECT_INTERVAL || 5000)
         )
       }
     }
@@ -174,28 +174,28 @@ async function sendMessage(session, to, message, ms = 0) {
 }
 
 function formatPhone(phone) {
-  const f = phone.replace(/\D/g,'')
+  const f = phone.replace(/\D/g, '')
   return f.endsWith('@s.whatsapp.net') ? f : `${f}@s.whatsapp.net`
 }
 
 function formatGroup(grp) {
-  const f = grp.replace(/[^\d-]/g,'')
+  const f = grp.replace(/[^\d-]/g, '')
   return f.endsWith('@g.us') ? f : `${f}@g.us`
 }
 
-function cleanup(){}
+function cleanup() {}
 
-function init(){
+function init() {
   try {
-    readdirSync(join(__dirname,'sessions')).forEach(f=>{
-      if(!/^md_|^legacy_/.test(f))return
-      const id = f.replace(/^(md_|legacy_)/,'')
-      createSession(id,f.startsWith('legacy_'))
+    readdirSync(join(__dirname, 'sessions')).forEach(f => {
+      if (!/^md_|^legacy_/.test(f)) return
+      const id = f.replace(/^(md_|legacy_)/, '')
+      createSession(id, f.startsWith('legacy_'))
     })
-  }catch{}
+  } catch {}
 }
 
-function getSession(sessionId){
+function getSession(sessionId) {
   const e = sessions.get(`device_${sessionId}`)
   return e?.sock ?? null
 }
